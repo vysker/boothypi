@@ -13,6 +13,12 @@ PREVIEW_FILE_PATH = PREVIEW_FILE_DIR + '' + PREVIEW_FILE_NAME
 # Destination directory for the camera roll.
 ROLL_DIR = '/home/pi/dev/boothypi-ui/feed/roll/'
 
+# GPhoto2 command switches
+GPHOTO2_COMMAND = 'gphoto2'
+GPHOTO2_CAPTURE_IMAGE_AND_DOWNLOAD_SWITCH = '--capture-image-and-download'
+GPHOTO2_FILENAME_SWITCH = '--filename='
+GPHOTO2_OVERWRITE_SWITCH = '--force-overwrite'
+
 def try_create_dir(path):
   print('Creating ' + path)
   try:
@@ -36,22 +42,26 @@ DATETIME_FORMAT = '%Y-%m-%d_%H-%M-%S'
 
 # Constant that holds the command for capturing preview images.
 # This prevents constant reinitialization of the array in the while-loop.
-PREVIEW_COMMAND_ARRAY = ['gphoto2', '--capture-image-and-download', '--filename=' + PREVIEW_FILE_PATH, '--force-overwrite']
+PREVIEW_COMMAND_ARRAY = ['sudo', GPHOTO2_COMMAND, GPHOTO2_CAPTURE_IMAGE_AND_DOWNLOAD_SWITCH, GPHOTO2_FILENAME_SWITCH + PREVIEW_FILE_PATH, GPHOTO2_OVERWRITE_SWITCH]
 
 # The amount of time to wait before the next picture is taken.
 PREVIEW_INTERVAL = 0.250
+# Snap countdown time
+SNAP_COUNTDOWN_TIME = 3
 
 # When set to true, this flag indicates that the camera is currently not available for use.
 camera_busy = False
 
 def take_picture(channel):
+  sleep(SNAP_COUNTDOWN_TIME)
   camera_busy = True
-  PATH = ROLL_DIR + 'roll' + strftime(DATETIME_FORMAT, gmtime())
+  PATH = ROLL_DIR + 'roll' + strftime(DATETIME_FORMAT, gmtime()) + '.jpg'
   call([
-    'gphoto2',
-    '--capture-image-and-download',
-    '--filename=' + PATH,
-    '--force-overwrite'
+    'sudo',
+    GPHOTO2_COMMAND,
+    GPHOTO2_CAPTURE_IMAGE_AND_DOWNLOAD_SWITCH,
+    GPHOTO2_FILENAME_SWITCH + PATH,
+    GPHOTO2_OVERWRITE_SWITCH
   ])
   camera_busy = False
   # call(['cp', ]) # TODO: copy to external drive
