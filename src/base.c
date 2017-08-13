@@ -15,41 +15,35 @@ static void destroy(GtkWidget *widget, gpointer data)
   gtk_main_quit();
 }
 
+static gboolean load_preview_image(gpointer image)
+{
+  GdkPixbuf *pixbuf;
+  GdkPixbuf *pixbuf2;
+  GError *error = NULL;
+
+  pixbuf = gdk_pixbuf_new_from_file(preview_image_path, &error);
+  if (error == NULL) {
+    pixbuf2 = gdk_pixbuf_scale_simple(pixbuf, preview_image_width, preview_image_height, GDK_INTERP_NEAREST);
+    gtk_image_set_from_pixbuf(GTK_IMAGE(image), pixbuf2);
+    g_clear_object(&pixbuf2);
+  } else {
+    // g_printf("Pixbuf load error: %s\n", error->message);
+  }
+
+  g_clear_error(&error);
+  g_clear_object(&pixbuf);
+
+  return TRUE;
+}
+
 static gpointer stream_preview_image(gpointer image)
 {
   int num_errors = 0;
   int num_images_loaded = 0;
   int i = 0;
 
-  while (TRUE) {
-    GdkPixbuf *pixbuf;
-    GdkPixbuf *pixbuf2;
-    GError *error = NULL;
-
-    sleep(0.25);
-
-    pixbuf = gdk_pixbuf_new_from_file(preview_image_path, &error);
-    // pixbuf = gdk_pixbuf_new_from_file_at_size(preview_image_path, preview_image_width, preview_image_height, &error);
-    // pixbuf = gdk_pixbuf_new_from_file_at_scale(preview_image_path, preview_image_width, preview_image_height, TRUE, &error); // TODO: Not necessary to check aspect ratio, since I already know the dimensions.
-    if (error == NULL) {
-      pixbuf2 = gdk_pixbuf_scale_simple(pixbuf, preview_image_width, preview_image_height, GDK_INTERP_NEAREST);
-      gtk_image_set_from_pixbuf(GTK_IMAGE(image), pixbuf2);
-      g_clear_object(&pixbuf2);
-      num_images_loaded++;
-    } else {
-      // g_printf("Pixbuf load error: %s\n", error->message);
-      num_errors++;
-    }
-
-    g_clear_error(&error);
-    g_clear_object(&pixbuf);
-
-    i++;
-
-    if (i % 16 == 0) { // Display info every 16 iterations
-      g_printf("i: %i | images: %i | errors: %i\n", i, num_images_loaded, num_errors);
-    }
-  }
+  // g_timeout_add is like setInterval in Javascript.
+  int timeout_id = g_timeout_add(250, load_preview_image, image); // timeout_id can be used to destroy the interval.
 
   return NULL;
 }
