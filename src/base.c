@@ -2,15 +2,17 @@
 #include <sys/inotify.h>
 #include <unistd.h>
 #include <string.h>
+#include <linux/limits.h>
 
-const gchar preview_image_path[] = "/home/dick/dev/pi/boothypiui-gtk/preview.jpg";
+const char latest_image_dir[] = "/home/dick/dev/pi/boothypiui-gtk/latest";
+const char latest_image_path[] = "/home/dick/dev/pi/boothypiui-gtk/latest/latest.jpg";
 const char roll_images_dir[] = "/home/dick/dev/pi/boothypiui-gtk/roll";
-int preview_image_width = 600;
-int preview_image_height = 400;
-int preview_stream_interval = 250;
-int roll_image_width = 600;
-int roll_image_height = 400;
-GtkWidget *preview_image;
+int latest_image_width = 900;
+int latest_image_height = 600;
+// int preview_stream_interval = 250;
+int roll_image_width = 384;
+int roll_image_height = 256;
+GtkWidget *latest_image;
 
 #define roll_image_count 3
 GtkImage * *roll_image;
@@ -24,16 +26,16 @@ static void destroy(GtkWidget *widget, gpointer data)
   gtk_main_quit();
 }
 
-static gboolean load_preview_image(gpointer data)
+static gboolean load_latest_image(gpointer data)
 {
   GdkPixbuf *pixbuf;
   GdkPixbuf *pixbuf2;
   GError *error = NULL;
 
-  pixbuf = gdk_pixbuf_new_from_file(preview_image_path, &error);
+  pixbuf = gdk_pixbuf_new_from_file(latest_image_path, &error);
   if (error == NULL) {
-    pixbuf2 = gdk_pixbuf_scale_simple(pixbuf, preview_image_width, preview_image_height, GDK_INTERP_NEAREST);
-    gtk_image_set_from_pixbuf(GTK_IMAGE(preview_image), pixbuf2);
+    pixbuf2 = gdk_pixbuf_scale_simple(pixbuf, latest_image_width, latest_image_height, GDK_INTERP_NEAREST);
+    gtk_image_set_from_pixbuf(GTK_IMAGE(latest_image), pixbuf2);
     g_clear_object(&pixbuf2);
   } else {
     // g_printf("Pixbuf load error: %s\n", error->message);
@@ -77,7 +79,7 @@ static gboolean load_roll_image(gpointer data)
     gtk_image_set_from_pixbuf(GTK_IMAGE(roll_images[0]), pixbuf2);
     g_clear_object(&pixbuf2);
   } else {
-    g_printf("Pixbuf load error: %s\n", error->message);
+    // printf("Pixbuf load error: %s\n", error->message);
   }
 
   g_clear_error(&error);
@@ -86,10 +88,30 @@ static gboolean load_roll_image(gpointer data)
   return TRUE;
 }
 
-static gpointer stream_preview_image(gpointer data)
+static gpointer stream_latest_image(gpointer data)
 {
-  // g_timeout_add is like setInterval in Javascript.
-  g_timeout_add(preview_stream_interval, load_preview_image, NULL);
+  int fd = inotify_init();
+  int wd = inotify_add_watch(fd, latest_image_dir, IN_CLOSE_WRITE);
+
+  size_t event_size = sizeof(struct inotify_event) + NAME_MAX + 1;
+  size_t buffer_len = event_size * 1024;
+
+  while (running > 0) {
+    char buffer[buffer_len];
+
+    int bytes_read = read(fd, buffer, buffer_len);
+
+    if (bytes_read > 0) {
+      struct inotify_event *event_buf = (struct inotify_event *) &buffer;
+
+      if (event_buf->len && (event_buf->mask & IN_CLOSE_WRITE) && (event_buf->mask & IN_ISDIR) == 0) {
+        load_latest_image(NULL);
+      }
+    }
+  }
+
+  inotify_rm_watch(fd, wd);
+  close(fd);
 
   return NULL;
 }
@@ -125,11 +147,9 @@ static gpointer stream_roll_images(gpointer data)
 int main(int argc, char *argv[])
 {
   GtkWidget *window;
-  GtkWidget *button;
   GtkWidget *root_box;
   GtkWidget *stream_box;
   GtkWidget *roll_box;
-  GtkWidget *info_box;
 
   gtk_init(&argc, &argv);
 
@@ -140,13 +160,13 @@ int main(int argc, char *argv[])
   gtk_container_set_border_width(GTK_CONTAINER(window), 10);
 
   root_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
-  stream_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
-  roll_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+  stream_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+  roll_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
 
   gtk_container_add(GTK_CONTAINER(window), root_box);
 
-  preview_image = gtk_image_new();
-  gtk_box_pack_start(GTK_BOX(stream_box), preview_image, TRUE, TRUE, 0);
+  latest_image = gtk_image_new();
+  gtk_box_pack_start(GTK_BOX(stream_box), latest_image, TRUE, TRUE, 0);
 
   for(int i = 0; i < roll_image_count; i++) {
     roll_images[i] = (GtkImage *) gtk_image_new();
@@ -157,8 +177,9 @@ int main(int argc, char *argv[])
   gtk_box_pack_start(GTK_BOX(root_box), stream_box, TRUE, TRUE, 0);
 
   gtk_widget_show_all(window);
+  gtk_window_maximize(GTK_WINDOW(window));
 
-  g_thread_new("StreamPreviewImage", stream_preview_image, NULL);
+  g_thread_new("StreamRecentImage", stream_latest_image, NULL);
   g_thread_new("StreamRollImages", stream_roll_images, NULL);
 
   gtk_main();
