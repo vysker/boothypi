@@ -16,8 +16,11 @@ GtkWidget *preview_image;
 GtkImage * *roll_image;
 GtkImage * roll_images[roll_image_count];
 
+int running = 1;
+
 static void destroy(GtkWidget *widget, gpointer data)
 {
+  running = 0;
   gtk_main_quit();
 }
 
@@ -44,19 +47,12 @@ static gboolean load_preview_image(gpointer data)
 
 static void shift_roll_images()
 {
-  printf("shifting start\n");
   for(int i = roll_image_count - 1; i > 0; i--) {
-    printf("i: %i\n", i);
-
     GdkPixbuf *pixbuf = gtk_image_get_pixbuf(roll_images[i - 1]);
     if (pixbuf != NULL) {
-      printf("setting %i to %i\n", i-1, i);
       gtk_image_set_from_pixbuf(roll_images[i], pixbuf);
     }
   }
-
-  // roll_images[0] = (GtkImage *) gtk_image_new();
-  printf("shifting done\n");
 }
 
 static gboolean load_roll_image(gpointer data)
@@ -68,17 +64,12 @@ static gboolean load_roll_image(gpointer data)
   char filename[strlen(data)];
   strcpy(filename, data);
 
-  printf("filename %s\n", filename);
-
   char roll_image_path[strlen(roll_images_dir) + strlen(filename)];
   strcpy(roll_image_path, roll_images_dir);
   strcat(roll_image_path, "/");
   strcat(roll_image_path, filename);
 
-  printf("full path %s\n", roll_image_path);
-
   pixbuf = gdk_pixbuf_new_from_file(roll_image_path, &error);
-  printf("newpixbuf\n");
   if (error == NULL) {
     shift_roll_images();
 
@@ -86,10 +77,8 @@ static gboolean load_roll_image(gpointer data)
     gtk_image_set_from_pixbuf(GTK_IMAGE(roll_images[0]), pixbuf2);
     g_clear_object(&pixbuf2);
   } else {
-    // g_printf("Pixbuf load error: %s\n", error->message);
+    g_printf("Pixbuf load error: %s\n", error->message);
   }
-
-  printf("roll image loaded\n");
 
   g_clear_error(&error);
   g_clear_object(&pixbuf);
@@ -108,21 +97,12 @@ static gpointer stream_preview_image(gpointer data)
 static gpointer stream_roll_images(gpointer data)
 {
   int fd = inotify_init();
-  int wd = inotify_add_watch(fd, roll_images_dir, IN_CREATE); // In case of multiple masks, pass them like so: IN_CREATE | IN_MODIFY | IN_DELETE
+  int wd = inotify_add_watch(fd, roll_images_dir, IN_CLOSE_WRITE); // In case of multiple masks, pass them like so: IN_CREATE | IN_MODIFY | IN_DELETE
 
   size_t event_size = sizeof(struct inotify_event) + NAME_MAX + 1;
   size_t buffer_len = event_size * 1024;
 
-  // struct inotify_event {
-  //   int      wd;       /* Watch descriptor */
-  //   uint32_t mask;     /* Mask of events */
-  //   uint32_t cookie;   /* Unique cookie associating related
-  //                         events (for rename(2)) */
-  //   uint32_t len;      /* Size of name field */
-  //   char     name[];   /* Optional null-terminated name */
-  // };
-
-  while (TRUE) {
+  while (running > 0) {
     char buffer[buffer_len];
 
     int bytes_read = read(fd, buffer, buffer_len);
@@ -130,7 +110,7 @@ static gpointer stream_roll_images(gpointer data)
     if (bytes_read > 0) {
       struct inotify_event *event_buf = (struct inotify_event *) &buffer;
 
-      if (event_buf->len && (event_buf->mask & IN_CREATE) && (event_buf->mask & IN_ISDIR) == 0) {
+      if (event_buf->len && (event_buf->mask & IN_CLOSE_WRITE) && (event_buf->mask & IN_ISDIR) == 0) {
         load_roll_image(event_buf->name);
       }
     }
